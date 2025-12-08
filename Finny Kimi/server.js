@@ -342,7 +342,7 @@ app.listen(PORT, () => {
   console.log(`🦊 Finny Server läuft auf Port ${PORT}`);
   console.log(`📡 API Endpoints bereit unter /api/*`);
   console.log(`🔑 PDF.co API: ${PDF_CO_API_KEY ? '✅ Verbunden' : '❌ Fehlend'}`);
-  console.log(`🤖 KIMI API: ${KIMI_API_KEY ? '✅ Verbunden' : '❌ Fehlend'}`);
+  console.log(`🤖 Comet/Kimi API: ${COMET_KEY ? '✅ Verbunden' : '❌ Fehlend'}`);
 });
 
 // ============================================
