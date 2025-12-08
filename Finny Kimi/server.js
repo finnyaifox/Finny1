@@ -26,7 +26,7 @@ console.log('╚═════════════════════�
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors({ origin: '*', credentials: true }));
-app.use(express.static(path.join(__dirname, 'public', 'index.html')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================
 // 📦 MULTER FÜR FILE UPLOADS
