@@ -16,6 +16,20 @@ const PDF_CO_API_KEY = 'leeonzo86@gmail.com_cYjsXcXA3N2FU2jD50NTtjbc4uhMQBtBHl5W
 const COMET_KEY      = 'sk-eQswrHDAMib6n6uxBXHWyZEd1ABdsAAY0JbuoXQ7Rxl1GkrZ';
 
 // ============================================
+// ⚙️ MIDDLEWARE
+// ============================================
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors({ origin: '*', credentials: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 📦 Multer-Upload-Middleware
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+// ============================================
 // 💾 SESSIONS & ULTRA-INTELLIGENTE HINTS
 // ============================================
 const sessions = new Map();
@@ -158,19 +172,6 @@ const FIELD_HINTS = {
 };
 
 // ============================================
-// ⚙️ MIDDLEWARE
-// ============================================
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(cors({ origin: '*', credentials: true }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// 📦 Multer-Upload-Middleware
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }
-});
-// ============================================
 // 🚀 API ENDPOINTS  (mit  D E T A I L  L O G S)
 // ============================================
 
@@ -225,17 +226,29 @@ app.post('/api/extract-fields', async (req, res) => {
       headers: { 'x-api-key': PDF_CO_API_KEY, 'Content-Type': 'application/json' }
     });
 
-    console.log('[EXTRACT] ✅  PDF.co Antwort:', response.data);
+    console.log('[EXTRACT] ✅  PDF.co Antwort erhalten');
 
-    if (!response.data.error && response.data.info?.FieldsInfo?.Fields) {
-      const fields = response.data.fields.map(f => ({ name: f.fieldName || f.name, type: f.fieldType || 'text', value: '' }));
-      if (sessions.has(sessionId)) sessions.get(sessionId).fields = fields;
-      console.log(`[EXTRACT] 📋  ${fields.length} Felder gefunden`);
-      res.json({ success: true, fields });
-    } else {
-      console.error('[EXTRACT] ❌  PDF.co Fehler:', response.data.message);
-      res.status(400).json({ success: false, message: response.data.message || 'Keine Felder gefunden' });
+    // KORREKT: Datenstruktur ist response.data.info.FieldsInfo.Fields
+    const rawFields = response.data.info?.FieldsInfo?.Fields || [];
+    
+    if (rawFields.length === 0) {
+      console.warn('[EXTRACT] ⚠️  Keine Formularfelder gefunden');
+      return res.status(400).json({ success: false, message: 'Keine Formularfelder in dieser PDF gefunden' });
     }
+
+    const fields = rawFields.map(f => ({
+      name: f.FieldName || f.fieldName || f.name,
+      type: f.Type || f.type || 'text',
+      value: ''
+    }));
+
+    if (sessions.has(sessionId)) {
+      sessions.get(sessionId).fields = fields;
+    }
+
+    console.log(`[EXTRACT] 📋  ${fields.length} Felder gefunden und geparst`);
+    res.json({ success: true, fields });
+
   } catch (error) {
     console.error('[EXTRACT] 💥  Exception:', error.message);
     res.status(500).json({ success: false, message: 'Fehler beim Extrahieren: ' + error.message });
