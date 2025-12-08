@@ -227,7 +227,7 @@ app.post('/api/extract-fields', async (req, res) => {
 
     console.log('[EXTRACT] ✅  PDF.co Antwort:', response.data);
 
-    if (!response.data.error && response.data.fields) {
+    if (!response.data.error && response.data.info?.FieldsInfo?.Fields) {
       const fields = response.data.fields.map(f => ({ name: f.fieldName || f.name, type: f.fieldType || 'text', value: '' }));
       if (sessions.has(sessionId)) sessions.get(sessionId).fields = fields;
       console.log(`[EXTRACT] 📋  ${fields.length} Felder gefunden`);
