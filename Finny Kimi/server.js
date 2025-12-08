@@ -194,7 +194,7 @@ app.post('/api/upload-pdf', upload.single('file'), async (req, res) => {
 
     console.log('[UPLOAD]  ✅  PDF.co Antwort erhalten:', response.data);
 
-    if (response.data.success && response.data.url) {
+    if (!response.data.error && response.data.url) {
       const sessionId = generateSessionId();
       sessions.set(sessionId, { pdfUrl: response.data.url, fields: [], filledFields: {}, currentFieldIndex: 0 });
       console.log(`[UPLOAD]  📦  Session erstellt: ${sessionId}`);
@@ -227,7 +227,7 @@ app.post('/api/extract-fields', async (req, res) => {
 
     console.log('[EXTRACT] ✅  PDF.co Antwort:', response.data);
 
-    if (response.data.success && response.data.fields) {
+    if (!response.data.error && response.data.fields) {
       const fields = response.data.fields.map(f => ({ name: f.fieldName || f.name, type: f.fieldType || 'text', value: '' }));
       if (sessions.has(sessionId)) sessions.get(sessionId).fields = fields;
       console.log(`[EXTRACT] 📋  ${fields.length} Felder gefunden`);
