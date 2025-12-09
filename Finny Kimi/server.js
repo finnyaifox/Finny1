@@ -23,16 +23,30 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ============================================
+// 💾 SESSION-PERSISTENZ (statt sessions = new Map())
+// ============================================
+const session = require('express-session');
+const FileStore = require('session-file-store')(session);
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'fallback-secret-change-me-in-production',
+  resave: false,
+  saveUninitialized: false,
+  store: new FileStore({ path: './sessions' }), // Sessions werden im Ordner "sessions" gespeichert
+  cookie: { 
+    secure: false,      // In Production auf "true" setzen, wenn HTTPS aktiv
+    maxAge: 24 * 60 * 60 * 1000, // 24 Stunden
+    httpOnly: true      // Schutz gegen XSS-Angriffe
+  }
+}));
+
 // 📦 Multer-Upload-Middleware
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
-// ============================================
-// 💾 SESSIONS & ULTRA-INTELLIGENTE HINTS
-// ============================================
-const sessions = new Map();
 
 // 🔥 ULTRA-INTELLIGENTE FELD-HINTS MIT KONTEXT
 const FIELD_HINTS = {
@@ -260,6 +274,12 @@ app.post('/api/chat', async (req, res) => {
   console.log('\n[CHAT]    ➜  /api/chat aufgerufen');
   try {
     const { sessionId, message, field } = req.body;
+    / Zugriff auf persistierte Session
+  if (!req.session.sessions) req.session.sessions = {};
+  if (!req.session.sessions[sessionId]) {
+    req.session.sessions[sessionId] = { pdfUrl: '', fields: [], filledFields: {} };
+  }
+  const session = req.session.sessions[sessionId];
     console.log(`[CHAT]    💬  Session: ${sessionId} | Feld: ${field.name} | Nutzer: ${message}`);
 
     if (!sessions.has(sessionId)) {
