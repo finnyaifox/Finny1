@@ -1218,17 +1218,19 @@
                     }
                     
                     // Feld speichern
-                    const updateResponse = await fetch('/api/update-field', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            sessionId: this.sessionId,
-                            fieldName: currentField.name,
-                            value: message
-                        })
-                    });
+                    // In index.html, Zeile 509 und folgende:
+const updateResponse = await fetch('/api/update-field', {
+  method: 'POST',
+  credentials: 'include', // ➜ WICHTIG: Cookies senden!
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    sessionId: this.sessionId,
+    fieldName: currentField.name,
+    value: message
+  })
+});
                     
                     if (updateResponse.ok) {
                         this.filledFields[currentField.name] = message;
