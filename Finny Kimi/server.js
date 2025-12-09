@@ -1,85 +1,97 @@
 require('dotenv').config();
-const express   = require('express');
-const multer    = require('multer');
-const axios     = require('axios');
-const cors      = require('cors');
-const FormData  = require('form-data');
-const path      = require('path');
-const session   = require('express-session');
+const express = require('express');
+const multer = require('multer');
+const axios = require('axios');
+const cors = require('cors');
+const FormData = require('form-data');
+const path = require('path');
+const session = require('express-session');
 const FileStore = require('session-file-store')(session);
+const fs = require('fs'); // WICHTIG: Für Ordner-Erstellung
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // ============================================
-// 📋 KEYS
+// 🚀 RENDER KOMPATIBILITÄT & SICHERHEIT
 // ============================================
-const PDF_CO_API_KEY = 'leeonzo86@gmail.com_cYjsXcXA3N2FU2jD50NTtjbc4uhMQBtBHl5Wv8hN7GndcfgnQEu0W42g8oLyccos';
-const COMET_KEY      = 'sk-eQswrHDAMib6n6uxBXHWyZEd1ABdsAAY0JbuoXQ7Rxl1GkrZ';
+const PORT = process.env.PORT || 3001;
+const PDF_CO_API_KEY = process.env.PDFCO_API_KEY; // Kein Fallback!
+const COMET_KEY = process.env.COMETAPI_KEY;       // Kein Fallback!
+const MODEL_NAME = process.env.MODEL_NAME || 'claude-sonnet-4-5-20250929-thinking';
+
+// Prüfe beim Server-Start
+if (!PDF_CO_API_KEY || !COMET_KEY) {
+  console.error('\n❌ FEHLER: API-Keys fehlen!');
+  console.error('👉 Setze PDFCO_API_KEY und COMETAPI_KEY in Render Environment Variables.');
+  process.exit(1); // Server stoppen
+}
+
+// ============================================
+// 📁 SESSIONS-ORDNER AUTOMATISCH ERSTELLEN
+// ============================================
+const sessionsDir = path.join(__dirname, 'sessions');
+if (!fs.existsSync(sessionsDir)) {
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  console.log('✅ Sessions-Verzeichnis erstellt:', sessionsDir);
+}
 
 // ============================================
 // ⚙️ MIDDLEWARE (STRIKTE REIHENFOLGE!)
 // ============================================
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// CORS muss Credentials erlauben!
-app.use(cors({ origin: true, credentials: true }));
-
+app.use(cors({ origin: true, credentials: true })); // ⭐ credentials: true
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================
-// 💾 SESSION-PERSISTENZ (korrekt integriert)
+// 💾 KORREKTE SESSION-PERSISTENZ
 // ============================================
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secret-change-me-in-production',
+  secret: process.env.SESSION_SECRET || 'fallback-secret-change-me-in-production-12345',
   resave: false,
   saveUninitialized: false,
   store: new FileStore({ path: './sessions' }),
   cookie: { 
-    secure: false,      // Setze auf true bei HTTPS in Production
+    secure: false,      // Auf true setzen wenn HTTPS aktiv
     maxAge: 24 * 60 * 60 * 1000,
     httpOnly: true,
-    sameSite: 'lax'     // WICHTIG für Cross-Origin-Cookies
+    sameSite: 'lax'     // ⭐ WICHTIG für Cross-Origin-Cookies
   },
-  name: 'finny.session' // Eindeutiger Session-Cookie-Name
+  name: 'finny.session'
 }));
 
-// 📦 Multer-Upload-Middleware
+// ============================================
+// 📦 MULTER UPLOAD
+// ============================================
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 // ============================================
-// 🔥 ULTRA-INTELLIGENTE FELD-HINTS
+// 🔥 FELD-HINTS (gekürzt für Übersicht)
 // ============================================
 const FIELD_HINTS = {
   'Ort und Nummer des Registereintrages': {
-    hint: 'Das zuständige Amtsgericht und die Handelsregisternummer deines Unternehmens',
+    hint: 'Das zuständige Amtsgericht und die Handelsregisternummer',
     example: 'Amtsgericht München, HRB 12345',
-    details: 'Die HRB-Nummer findest du im Handelsregister. Das Amtsgericht ist meist auf deinen Geschäftsdokumenten angegeben.',
-    tips: ['Beginne mit "Amtsgericht [Stadt]"', 'Die HRB-Nummer liegt zwischen HRB 1 und HRB 999999', 'Prüfe deine Handelsregistereintrag online'],
-    validation: 'Sollte "Amtsgericht" enthalten und eine Nummer haben',
-    skipAllowed: ['Einzelunternehmer', 'Freiberufler', 'keine HR-Nummer'],
-    fieldContext: 'Nur für Kapitalgesellschaften (GmbH, UG, AG) oder Personengesellschaften mit HR-Eintrag erforderlich'
+    details: 'Die HRB-Nummer findest du im Handelsregister.',
+    tips: ['Beginne mit "Amtsgericht [Stadt]"', 'Die HRB-Nummer liegt zwischen HRB 1 und HRB 999999']
   },
-  // ... (restlichen Feld-Definitions beibehalten) ...
+  // ... (alle anderen Felder wie vorher) ...
   'Datum der Unterschrift': {
     hint: 'Das Datum, an dem du das Formular unterzeichnest',
     example: '07.12.2025',
     details: 'Normalerweise heute oder das geplante Unterzeichnungsdatum.',
-    tips: ['Format: TT.MM.YYYY', 'Darf nicht in der Zukunft liegen', 'Oder heute eingeben'],
-    validation: 'Format TT.MM.YYYY',
-    fieldContext: 'Unterschrifts-Datum'
+    tips: ['Format: TT.MM.YYYY', 'Darf nicht in der Zukunft liegen']
   }
 };
 
 // ============================================
-// 🚀 API ENDPOINTS (korrekt & vollständig)
+// 🚀 API ENDPOINTS
 // ============================================
 
-// 1. PDF Upload zu PDF.co
+// 1. PDF Upload
 app.post('/api/upload-pdf', upload.single('file'), async (req, res) => {
   console.log('\n[UPLOAD] ➜ /api/upload-pdf aufgerufen');
   try {
@@ -87,7 +99,6 @@ app.post('/api/upload-pdf', upload.single('file'), async (req, res) => {
       console.warn('[UPLOAD] ⚠️ Keine Datei empfangen');
       return res.status(400).json({ success: false, message: 'Keine Datei hochgeladen' });
     }
-    console.log(`[UPLOAD] 📄 Datei: ${req.file.originalname} | Größe: ${req.file.size} Byte`);
 
     const formData = new FormData();
     formData.append('file', req.file.buffer, req.file.originalname);
@@ -99,7 +110,6 @@ app.post('/api/upload-pdf', upload.single('file'), async (req, res) => {
     if (!response.data.error && response.data.url) {
       const sessionId = generateSessionId();
       
-      // Session in req.session.sessions speichern
       if (!req.session.sessions) req.session.sessions = {};
       req.session.sessions[sessionId] = {
         pdfUrl: response.data.url,
@@ -120,22 +130,18 @@ app.post('/api/upload-pdf', upload.single('file'), async (req, res) => {
   }
 });
 
-// 2. Formularfelder extrahieren
+// 2. Felder extrahieren
 app.post('/api/extract-fields', async (req, res) => {
   console.log('\n[EXTRACT] ➜ /api/extract-fields aufgerufen');
   try {
     const { sessionId, pdfUrl } = req.body;
-    if (!pdfUrl) {
-      console.warn('[EXTRACT] ⚠️ Keine PDF-URL übermittelt');
-      return res.status(400).json({ success: false, message: 'PDF-URL erforderlich' });
-    }
+    if (!pdfUrl) return res.status(400).json({ success: false, message: 'PDF-URL erforderlich' });
 
     const response = await axios.post('https://api.pdf.co/v1/pdf/info/fields', { url: pdfUrl }, {
       headers: { 'x-api-key': PDF_CO_API_KEY, 'Content-Type': 'application/json' }
     });
 
     const rawFields = response.data.info?.FieldsInfo?.Fields || [];
-    
     if (rawFields.length === 0) {
       console.warn('[EXTRACT] ⚠️ Keine Formularfelder gefunden');
       return res.status(400).json({ success: false, message: 'Keine Formularfelder in dieser PDF gefunden' });
@@ -147,7 +153,6 @@ app.post('/api/extract-fields', async (req, res) => {
       value: ''
     }));
 
-    // Session aktualisieren
     if (req.session.sessions?.[sessionId]) {
       req.session.sessions[sessionId].fields = fields;
     }
@@ -160,18 +165,16 @@ app.post('/api/extract-fields', async (req, res) => {
   }
 });
 
-// 3. KIMI-COMET CHAT INTEGRATION
+// 3. KIMI/COMET Chat
 app.post('/api/chat', async (req, res) => {
   console.log('\n[CHAT] ➜ /api/chat aufgerufen');
   try {
     const { sessionId, message, field } = req.body;
     
-    // VALIDIERUNG
     if (!sessionId || !message || !field?.name) {
       return res.status(400).json({ success: false, message: 'Fehlende Parameter' });
     }
 
-    // Session holen
     if (!req.session.sessions?.[sessionId]) {
       console.warn('[CHAT] ⚠️ Session nicht gefunden');
       return res.status(400).json({ success: false, message: 'Session nicht gefunden' });
@@ -180,7 +183,7 @@ app.post('/api/chat', async (req, res) => {
     const lowerMsg = message.trim().toLowerCase();
     const hint = FIELD_HINTS[field.name];
 
-    // Befehle prüfen
+    // Befehle
     if (lowerMsg === 'hilfe' || lowerMsg === 'help') {
       const reply = hint ? `${hint.hint}\n\nBeispiel: ${hint.example}\n\nDetails: ${hint.details}` : 'Keine weiteren Hinweise vorhanden.';
       console.log('[CHAT] ℹ️ Befehl "hilfe" erkannt');
@@ -198,14 +201,14 @@ app.post('/api/chat', async (req, res) => {
       return res.json({ success: true, response: 'Feld übersprungen', skip: true });
     }
 
-    // KI-Anfrage
-    console.log('[CHAT] ➡️ Sende an CometAPI...');
+    // KI-Anfrage mit NEUEM MODEL
+    console.log('[CHAT] ➡️ Sende an CometAPI mit Model:', MODEL_NAME);
     const response = await axios.post(
       'https://api.cometapi.com/v1/chat/completions',
       {
-        model: 'kimi-k2-thinking',
+        model: MODEL_NAME, // ⭐ NEUES MODEL
         messages: [
-          { role: 'system', content: `Du bist Finny, ein hilfreicher KI-Assistent für PDF-Formulare. Du bekommst Formularfelder und stellst dem Nutzer eine Frage nach der anderen. Nach jeder Antwort validierst du kurz und gibst Tipps. Antworte immer auf Deutsch und sei freundlich und professionell.` },
+          { role: 'system', content: `Du bist Finny, ein hilfreicher KI-Assistent für PDF-Formulare. Stelle dem Nutzer eine Frage nach der anderen, validiere kurz und gib Tipps. Antworte immer auf Deutsch und sei freundlich und professionell.` },
           { role: 'user', content: `Ich habe ein PDF-Formular mit dem Feld "${field.name}". Der Nutzer hat geantwortet: "${message}". Bitte validiere die Antwort und gib eine passende Antwort.` }
         ],
         temperature: 0.7,
@@ -214,7 +217,7 @@ app.post('/api/chat', async (req, res) => {
       { headers: { Authorization: `Bearer ${COMET_KEY}`, 'Content-Type': 'application/json' } }
     );
 
-    const aiResponse = response.data.choices?.[0]?.message?.content || 'Keine Antwort von Comet/Kimi';
+    const aiResponse = response.data.choices?.[0]?.message?.content || 'Keine Antwort';
     res.json({ success: true, response: aiResponse });
   } catch (error) {
     console.error('[CHAT] 💥 Exception:', error.message);
@@ -244,11 +247,12 @@ app.post('/api/update-field', async (req, res) => {
     const { sessionId, fieldName, value } = req.body;
     
     if (!req.session.sessions?.[sessionId]) {
+      console.warn('[UPDATE] ⚠️ Session nicht gefunden');
       return res.status(400).json({ success: false, message: 'Session nicht gefunden' });
     }
     
     req.session.sessions[sessionId].filledFields[fieldName] = value;
-    await req.session.save(); // Session explizit speichern
+    await req.session.save(); // WICHTIG: Speichern erzwingen
     
     console.log(`[UPDATE] ✅ Feld gespeichert: ${fieldName} = ${value}`);
     res.json({ success: true });
@@ -304,6 +308,7 @@ app.listen(PORT, () => {
   console.log(`📡 API Endpoints bereit unter /api/*`);
   console.log(`🔑 PDF.co API: ${PDF_CO_API_KEY ? '✅ Verbunden' : '❌ Fehlend'}`);
   console.log(`🤖 Comet/Kimi API: ${COMET_KEY ? '✅ Verbunden' : '❌ Fehlend'}`);
+  console.log(`🧠 Model: ${MODEL_NAME}`);
 });
 
 // ============================================
